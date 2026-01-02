@@ -1,23 +1,22 @@
 import streamlit as st
 import pandas as pd
 
-
-# --- BACKEND LOGIC (Identical to your Desktop App) ---
+# --- BACKEND LOGIC ---
 class BaccaratEngine:
     def __init__(self):
-        self.players = {}  # {name: balance}
-        self.player_order = []  # Seating order
-        self.current_banker_idx = 0
+        self.players = {}          # {name: balance}
+        self.player_order = []     # Seating order
+        self.current_banker_idx = 0 
         self.start_balance = 10000.0
-
+        
         # Settings
         self.commission_rate = 0.05
         self.payout_tie = 8.0
-        self.payout_super6 = 0.5
-        self.payout_dragon7 = 40.0
-        self.payout_panda8 = 25.0
+        self.payout_super6 = 0.5    
+        self.payout_dragon7 = 40.0  
+        self.payout_panda8 = 25.0   
         self.game_mode = "Punto Banco"
-
+        
         self.chips = [(1000, 'Black'), (100, 'Green'), (25, 'Blue'), (5, 'Red'), (1, 'White')]
 
     def get_chip_breakdown(self, amount):
@@ -31,7 +30,7 @@ class BaccaratEngine:
                 breakdown.append(f"{count}x {color}")
                 cents %= chip_cents
         if cents > 0:
-            breakdown.append(f"${cents / 100:.2f} (Coins)")
+            breakdown.append(f"${cents/100:.2f} (Coins)")
         return ", ".join(breakdown)
 
     def pass_shoe(self):
@@ -47,9 +46,9 @@ class BaccaratEngine:
 
     def calculate_auto_fix(self, bets, bank_limit):
         active_banker = self.get_current_banker()
-        punter_bets_ordered = []
+        punter_bets_ordered = [] 
         total_wagered = 0.0
-
+        
         for name in self.player_order:
             if name == active_banker: continue
             if name in bets:
@@ -66,7 +65,7 @@ class BaccaratEngine:
             p_data = punter_bets_ordered[i]
             current_amt = p_data['amount']
             name = p_data['name']
-
+            
             deduct = min(current_amt, excess)
             new_amt = current_amt - deduct
             new_bets[name]['amount'] = new_amt if new_amt > 0 else 0.0
@@ -76,13 +75,13 @@ class BaccaratEngine:
     def calculate_round(self, bets, winner, special_trigger, bank_limit=0.0):
         results = []
         active_banker = self.get_current_banker()
-
+        
         banker_gross_win = 0.0
         banker_net_win = 0.0
-        banker_pnl = 0.0
-
+        banker_pnl = 0.0 
+        
         for player, bet_data in bets.items():
-            if player == active_banker: continue
+            if player == active_banker: continue 
             side = bet_data.get('side', '')
             amount = bet_data.get('amount', 0.0)
             if amount <= 0: continue
@@ -100,7 +99,7 @@ class BaccaratEngine:
                     outcome_txt = f"WON Tie (+${profit:.0f})"
                 else:
                     outcome_txt = "PUSH (Tie)"
-
+            
             # 2. MATCHING WINNER
             elif side == winner:
                 profit = 0.0
@@ -132,7 +131,7 @@ class BaccaratEngine:
                     self.players[player] += profit
                     if active_banker != "The House": banker_pnl -= profit
                     outcome_txt = f"WON (+${profit:.2f})"
-
+            
             # 3. LOSER
             else:
                 self.players[player] -= amount
@@ -167,11 +166,9 @@ class BaccaratEngine:
 
         return results, banker_gross_win, banker_net_win
 
-
 # --- STREAMLIT FRONTEND ---
 st.set_page_config(page_title="Baccarat Tracker", page_icon="♠️", layout="wide")
 
-# Initialize Session State
 if 'engine' not in st.session_state:
     st.session_state.engine = BaccaratEngine()
 if 'game_active' not in st.session_state:
@@ -183,26 +180,22 @@ if 'logs' not in st.session_state:
 if 'verified' not in st.session_state:
     st.session_state.verified = False
 
-
 def add_log(msg):
     st.session_state.logs.insert(0, msg)
-
 
 # --- SETUP SCREEN ---
 if not st.session_state.game_active:
     st.title("♠️ Baccarat Table Setup")
-
+    
     with st.expander("Configuration", expanded=True):
         buyin = st.number_input("Buy-In Amount ($)", value=10000.0, step=100.0)
-        names_str = st.text_input("Player Names (Comma Separated)", "Cedric, Nico, Boris, Player4")
-
+        names_str = st.text_input("Player Names (Comma Separated)", "Player 1, Player 2, Player 3")
+        
     with st.expander("Rules & Modes", expanded=True):
-        mode = st.selectbox("Game Mode",
-                            ["Punto Banco", "Chemin de Fer", "Super 6", "EZ Baccarat", "Dragon 7", "Panda 8"])
+        mode = st.selectbox("Game Mode", ["Punto Banco", "Chemin de Fer", "Super 6", "EZ Baccarat", "Dragon 7", "Panda 8"])
         tie_pay = st.number_input("Tie Payout (X:1)", value=8.0)
         comm_pct = st.number_input("Commission (%)", value=5.0)
-
-        # Dynamic Inputs
+        
         special_pay = 0.0
         if mode == "Super 6":
             special_pay = st.number_input("Banker 6 Payout (0.5 = 50%)", value=0.5)
@@ -212,13 +205,12 @@ if not st.session_state.game_active:
             special_pay = st.number_input("Panda 8 Payout", value=25.0)
 
     if st.button("OPEN TABLE", type="primary"):
-        # Initialize Engine
         eng = st.session_state.engine
         eng.start_balance = buyin
         eng.commission_rate = comm_pct / 100.0
         eng.payout_tie = tie_pay
         eng.game_mode = mode
-
+        
         if mode == "Super 6":
             eng.payout_super6 = special_pay
             eng.commission_rate = 0.0
@@ -230,12 +222,12 @@ if not st.session_state.game_active:
             eng.commission_rate = 0.0
         elif mode == "EZ Baccarat":
             eng.commission_rate = 0.0
-
+            
         names = [n.strip() for n in names_str.split(',') if n.strip()]
         eng.players = {n: buyin for n in names}
         eng.player_order = names
         eng.current_banker_idx = 0
-
+        
         st.session_state.bank_limit = buyin
         st.session_state.game_active = True
         st.session_state.logs = [f"=== {mode.upper()} STARTED ==="]
@@ -244,8 +236,7 @@ if not st.session_state.game_active:
 # --- GAME SCREEN ---
 else:
     eng = st.session_state.engine
-
-    # 1. Header & Controls
+    
     col1, col2 = st.columns([1, 3])
     with col1:
         if st.button("⬅ Setup"):
@@ -254,10 +245,8 @@ else:
     with col2:
         st.header(f"Mode: {eng.game_mode}")
 
-    # 2. Banker Control (Chemmy Only)
     if eng.game_mode == "Chemin de Fer":
         st.info(f"**Banker:** {eng.get_current_banker()}")
-
         b_col1, b_col2, b_col3, b_col4 = st.columns([2, 2, 2, 2])
         with b_col1:
             st.session_state.bank_limit = st.number_input("Bank Limit", value=st.session_state.bank_limit, step=100.0)
@@ -269,7 +258,6 @@ else:
                 add_log(f"--- SHOE PASSED TO {new_bnk} ---")
                 st.rerun()
 
-    # 3. Scoreboard
     st.subheader("Chips")
     score_cols = st.columns(len(eng.player_order))
     for i, name in enumerate(eng.player_order):
@@ -279,81 +267,51 @@ else:
 
     st.markdown("---")
 
-    # 4. Betting Interface
     st.subheader("Place Bets")
-
     current_bets = {}
     active_banker = eng.get_current_banker()
-
-    # Create rows for each player
+    
     for name in eng.player_order:
         is_banker = (name == active_banker and eng.game_mode == "Chemin de Fer")
-
-        # Determine styling
-        row_bg = "background-color: #f0f2f6; padding: 10px; border-radius: 5px;" if is_banker else ""
-
+        
         with st.container():
             c1, c2, c3, c4 = st.columns([1, 2, 2, 1])
-
             with c1:
                 st.write(f"**{name}**" + (" (BNK)" if is_banker else ""))
-
-            # Inputs
-            # We use keys to make inputs unique per player
             with c2:
-                side = st.radio("Side", ["-", "B", "P", "T"], horizontal=True, key=f"side_{name}",
-                                label_visibility="collapsed", disabled=is_banker)
+                side = st.radio("Side", ["-", "B", "P", "T"], horizontal=True, key=f"side_{name}", label_visibility="collapsed", disabled=is_banker)
             with c3:
-                amt = st.number_input("Amount", min_value=0.0, step=10.0, key=f"amt_{name}",
-                                      label_visibility="collapsed", disabled=is_banker)
-
-            # Banco Button logic
+                amt = st.number_input("Amount", min_value=0.0, step=10.0, key=f"amt_{name}", label_visibility="collapsed", disabled=is_banker)
+            
             if eng.game_mode == "Chemin de Fer" and not is_banker:
                 with c4:
-                    if st.button("BANCO!", key=f"banco_{name}"):
-                        # Logic to set this player to max and others to 0 requires session state manipulation
-                        # Streamlit workaround for setting widget values:
-                        pass  # Requires complex callback, simpler to just type amount for now in web
-
+                    st.button("BANCO!", key=f"banco_{name}", disabled=True, help="Type amount manually for now")
+            
             if side != "-" and amt > 0:
                 current_bets[name] = {'side': side, 'amount': amt}
 
     st.markdown("---")
 
-    # 5. Actions & Verification
-
-    # Verification Step
     if st.button("VERIFY BETS", type="secondary", use_container_width=True):
         total_wager = sum(b['amount'] for b in current_bets.values())
         limit = st.session_state.bank_limit
-
+        
         if eng.game_mode == "Chemin de Fer" and total_wager > limit:
             st.error(f"⚠️ Bets (${total_wager}) exceed Bank Limit (${limit})!")
-
-            if st.button("Fix Automatically"):
-                # We would need to push corrected values back to widgets
-                # In basic streamlit this is hard without clearing inputs.
-                # We will just display the instruction for now.
-                st.warning("Please reduce bets manually based on Reverse Seating Order.")
+            st.warning("Please reduce bets manually based on Reverse Seating Order.")
         else:
             st.success("✅ Bets Valid!")
             st.session_state.verified = True
 
-    # Winner Buttons
     st.write("### Result")
     r_col1, r_col2, r_col3, r_col4 = st.columns([1, 1, 1, 1])
-
+    
     trigger = False
     with r_col4:
-        # Dynamic Trigger Checkbox
-        if eng.game_mode == "Super 6":
-            trigger = st.checkbox("Banker 6?")
-        elif eng.game_mode == "EZ Baccarat":
-            trigger = st.checkbox("Dragon 7?")
-        elif eng.game_mode == "Dragon 7":
-            trigger = st.checkbox("Dragon 7?")
-        elif eng.game_mode == "Panda 8":
-            trigger = st.checkbox("Panda 8?")
+        if eng.game_mode == "Super 6": trigger = st.checkbox("Banker 6?")
+        elif eng.game_mode == "EZ Baccarat": trigger = st.checkbox("Dragon 7?")
+        elif eng.game_mode == "Dragon 7": trigger = st.checkbox("Dragon 7?")
+        elif eng.game_mode == "Panda 8": trigger = st.checkbox("Panda 8?")
 
     winner = None
     if r_col1.button("BANKER WIN", type="primary"): winner = 'B'
@@ -361,24 +319,20 @@ else:
     if r_col3.button("TIE", type="secondary"): winner = 'T'
 
     if winner:
-        # Validate Limit one last time
         limit = st.session_state.bank_limit
         total_wager = sum(b['amount'] for b in current_bets.values())
-
+        
         if eng.game_mode == "Chemin de Fer" and total_wager > limit:
-            st.error("Cannot process: Bets exceed limit! Verify first.")
+             st.error("Cannot process: Bets exceed limit! Verify first.")
         else:
-            # Calculate
             results, b_gross, b_net = eng.calculate_round(current_bets, winner, trigger, 0)
-
-            # Logs
+            
             w_txt = f"WINNER: {winner}"
             if trigger: w_txt += " (Special Rule Triggered)"
             add_log(w_txt)
             for r in results: add_log(r)
             add_log("-" * 30)
-
-            # Chemmy Updates
+            
             if eng.game_mode == "Chemin de Fer":
                 if winner == 'P':
                     add_log(">> Player Won. Shoe passing...")
@@ -386,16 +340,15 @@ else:
                 elif winner == 'B':
                     add_log(">> Banker Won. Shoe remains.")
                     if b_gross > 0:
-                        # Checkbox logic from step 2
-                        # (We need to grab the checkbox value from step 2, but streamlit reruns)
-                        # Assuming 'inc_comm' variable exists in scope
-                        add_amt = b_net if inc_comm else b_gross
-                        st.session_state.bank_limit += add_amt
-                        add_log(f"   [Bank Limit increased to ${st.session_state.bank_limit:.0f}]")
-
+                         # 'inc_comm' exists in local scope if Chemmy is active
+                         try:
+                             add_amt = b_net if inc_comm else b_gross
+                             st.session_state.bank_limit += add_amt
+                             add_log(f"   [Bank Limit increased to ${st.session_state.bank_limit:.0f}]")
+                         except: pass
+            
             st.rerun()
 
-    # 6. Activity Log
     st.markdown("### Activity Log")
     log_box = st.container(height=300)
     for line in st.session_state.logs:
