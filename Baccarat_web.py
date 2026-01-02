@@ -60,7 +60,6 @@ class BaccaratEngine:
         if excess <= 0: return bets
 
         new_bets = bets.copy()
-        # Iterate Backwards (Reverse Seating Order) to remove excess
         for i in range(len(punter_bets_ordered) - 1, -1, -1):
             if excess <= 0: break
             p_data = punter_bets_ordered[i]
@@ -69,8 +68,6 @@ class BaccaratEngine:
             
             deduct = min(current_amt, excess)
             new_amt = current_amt - deduct
-            
-            # Update the bet amount in the dictionary
             new_bets[name]['amount'] = new_amt if new_amt > 0 else 0.0
             excess -= deduct
             
@@ -182,10 +179,37 @@ if 'bank_limit' not in st.session_state:
 if 'logs' not in st.session_state:
     st.session_state.logs = []
 if 'verify_state' not in st.session_state:
-    st.session_state.verify_state = "neutral" # neutral, passed, failed
+    st.session_state.verify_state = "neutral" 
 
 def add_log(msg):
     st.session_state.logs.insert(0, msg)
+
+# --- CALLBACKS (Crucial Fix for Streamlit State) ---
+def apply_banco(player_name, eng):
+    """Callback to enforce Banco! logic before render."""
+    limit = st.session_state.bank_limit
+    active_banker = eng.get_current_banker()
+    
+    for other_name in eng.player_order:
+        if other_name == active_banker: continue
+        
+        # Keys for session state
+        s_key = f"side_{other_name}"
+        a_key = f"amt_{other_name}"
+        
+        if other_name == player_name:
+            st.session_state[s_key] = "P"
+            st.session_state[a_key] = float(limit)
+        else:
+            st.session_state[s_key] = "-"
+            st.session_state[a_key] = 0.0
+
+def apply_auto_fix(eng, current_bets, limit):
+    """Callback to apply auto-fix results to widgets."""
+    corrected_bets = eng.calculate_auto_fix(current_bets, limit)
+    for name, data in corrected_bets.items():
+        st.session_state[f"amt_{name}"] = data['amount']
+    st.session_state.verify_state = "passed"
 
 # --- SETUP SCREEN ---
 if not st.session_state.game_active:
@@ -283,11 +307,8 @@ else:
             with c1:
                 st.write(f"**{name}**" + (" (BNK)" if is_banker else ""))
             with c2:
-                # Key based tracking for widgets
                 side_key = f"side_{name}"
                 amt_key = f"amt_{name}"
-                
-                # Initialize inputs if not in session state yet
                 if side_key not in st.session_state: st.session_state[side_key] = "-"
                 if amt_key not in st.session_state: st.session_state[amt_key] = 0.0
                 
@@ -297,19 +318,8 @@ else:
             
             if eng.game_mode == "Chemin de Fer" and not is_banker:
                 with c4:
-                    # Banco functionality
-                    if st.button("BANCO!", key=f"banco_{name}"):
-                        # Set this player to Max, others to 0
-                        limit = st.session_state.bank_limit
-                        for other_name in eng.player_order:
-                            if other_name == active_banker: continue
-                            if other_name == name:
-                                st.session_state[f"side_{other_name}"] = "P"
-                                st.session_state[f"amt_{other_name}"] = limit
-                            else:
-                                st.session_state[f"side_{other_name}"] = "-"
-                                st.session_state[f"amt_{other_name}"] = 0.0
-                        st.rerun()
+                    # FIX: Use on_click callback to update state before render
+                    st.button("BANCO!", key=f"banco_{name}", on_click=apply_banco, args=(name, eng))
             
             if side != "-" and amt > 0:
                 current_bets[name] = {'side': side, 'amount': amt}
@@ -326,24 +336,16 @@ else:
         else:
             st.session_state.verify_state = "passed"
 
-    # Display Verify Result
     if st.session_state.verify_state == "passed":
         st.success("✅ Bets Valid!")
     
     elif st.session_state.verify_state == "failed":
         limit = st.session_state.bank_limit
         total_wager = sum(b['amount'] for b in current_bets.values())
-        # FIX: Escape dollar signs for Streamlit Markdown
         st.error(f"⚠️ Bets (\${total_wager:.0f}) exceed Bank Limit (\${limit:.0f})!")
         
-        if st.button("Fix Automatically"):
-            corrected_bets = eng.calculate_auto_fix(current_bets, limit)
-            # Update session state widgets
-            for name, data in corrected_bets.items():
-                st.session_state[f"amt_{name}"] = data['amount']
-            
-            st.session_state.verify_state = "passed"
-            st.rerun()
+        # FIX: Use on_click for Auto Fix as well
+        st.button("Fix Automatically", on_click=apply_auto_fix, args=(eng, current_bets, limit))
 
     st.write("### Result")
     r_col1, r_col2, r_col3, r_col4 = st.columns([1, 1, 1, 1])
@@ -388,7 +390,6 @@ else:
                              add_log(f"   [Bank Limit increased to ${st.session_state.bank_limit:.0f}]")
                          except: pass
             
-            # Reset
             st.session_state.verify_state = "neutral"
             st.rerun()
 
