@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 
-# --- BACKEND LOGIC ---
+# BACKEND LOGIC
 class BaccaratEngine:
     def __init__(self):
         self.players = {}          
@@ -167,7 +167,7 @@ class BaccaratEngine:
 
         return results, banker_gross_win, banker_net_win
 
-# --- STREAMLIT FRONTEND ---
+# STREAMLIT FRONTEND
 st.set_page_config(page_title="Baccarat Tracker", page_icon="♠️", layout="wide")
 
 if 'engine' not in st.session_state:
@@ -184,7 +184,7 @@ if 'verify_state' not in st.session_state:
 def add_log(msg):
     st.session_state.logs.insert(0, msg)
 
-# --- CALLBACKS (Crucial Fix for Streamlit State) ---
+# CALLBACKS
 def apply_banco(player_name, eng):
     """Callback to enforce Banco! logic before render."""
     limit = st.session_state.bank_limit
@@ -211,7 +211,7 @@ def apply_auto_fix(eng, current_bets, limit):
         st.session_state[f"amt_{name}"] = data['amount']
     st.session_state.verify_state = "passed"
 
-# --- SETUP SCREEN ---
+# SETUP SCREEN
 if not st.session_state.game_active:
     st.title("♠️ Baccarat Table Setup")
     
@@ -261,7 +261,7 @@ if not st.session_state.game_active:
         st.session_state.logs = [f"=== {mode.upper()} STARTED ==="]
         st.rerun()
 
-# --- GAME SCREEN ---
+# GAME SCREEN
 else:
     eng = st.session_state.engine
     
@@ -343,8 +343,6 @@ else:
         limit = st.session_state.bank_limit
         total_wager = sum(b['amount'] for b in current_bets.values())
         st.error(f"⚠️ Bets (\${total_wager:.0f}) exceed Bank Limit (\${limit:.0f})!")
-        
-        # FIX: Use on_click for Auto Fix as well
         st.button("Fix Automatically", on_click=apply_auto_fix, args=(eng, current_bets, limit))
 
     st.write("### Result")
@@ -397,3 +395,4 @@ else:
     log_box = st.container(height=300)
     for line in st.session_state.logs:
         log_box.write(line)
+
