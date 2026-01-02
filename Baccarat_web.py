@@ -4,8 +4,8 @@ import pandas as pd
 # --- BACKEND LOGIC ---
 class BaccaratEngine:
     def __init__(self):
-        self.players = {}          # {name: balance}
-        self.player_order = []     # Seating order
+        self.players = {}          
+        self.player_order = []     
         self.current_banker_idx = 0 
         self.start_balance = 10000.0
         
@@ -60,6 +60,7 @@ class BaccaratEngine:
         if excess <= 0: return bets
 
         new_bets = bets.copy()
+        # Iterate Backwards (Reverse Seating Order) to remove excess
         for i in range(len(punter_bets_ordered) - 1, -1, -1):
             if excess <= 0: break
             p_data = punter_bets_ordered[i]
@@ -68,8 +69,11 @@ class BaccaratEngine:
             
             deduct = min(current_amt, excess)
             new_amt = current_amt - deduct
+            
+            # Update the bet amount in the dictionary
             new_bets[name]['amount'] = new_amt if new_amt > 0 else 0.0
             excess -= deduct
+            
         return new_bets
 
     def calculate_round(self, bets, winner, special_trigger, bank_limit=0.0):
@@ -177,8 +181,8 @@ if 'bank_limit' not in st.session_state:
     st.session_state.bank_limit = 0.0
 if 'logs' not in st.session_state:
     st.session_state.logs = []
-if 'verified' not in st.session_state:
-    st.session_state.verified = False
+if 'verify_state' not in st.session_state:
+    st.session_state.verify_state = "neutral" # neutral, passed, failed
 
 def add_log(msg):
     st.session_state.logs.insert(0, msg)
@@ -279,29 +283,67 @@ else:
             with c1:
                 st.write(f"**{name}**" + (" (BNK)" if is_banker else ""))
             with c2:
-                side = st.radio("Side", ["-", "B", "P", "T"], horizontal=True, key=f"side_{name}", label_visibility="collapsed", disabled=is_banker)
+                # Key based tracking for widgets
+                side_key = f"side_{name}"
+                amt_key = f"amt_{name}"
+                
+                # Initialize inputs if not in session state yet
+                if side_key not in st.session_state: st.session_state[side_key] = "-"
+                if amt_key not in st.session_state: st.session_state[amt_key] = 0.0
+                
+                side = st.radio("Side", ["-", "B", "P", "T"], horizontal=True, key=side_key, label_visibility="collapsed", disabled=is_banker)
             with c3:
-                amt = st.number_input("Amount", min_value=0.0, step=10.0, key=f"amt_{name}", label_visibility="collapsed", disabled=is_banker)
+                amt = st.number_input("Amount", min_value=0.0, step=10.0, key=amt_key, label_visibility="collapsed", disabled=is_banker)
             
             if eng.game_mode == "Chemin de Fer" and not is_banker:
                 with c4:
-                    st.button("BANCO!", key=f"banco_{name}", disabled=True, help="Type amount manually for now")
+                    # Banco functionality
+                    if st.button("BANCO!", key=f"banco_{name}"):
+                        # Set this player to Max, others to 0
+                        limit = st.session_state.bank_limit
+                        for other_name in eng.player_order:
+                            if other_name == active_banker: continue
+                            if other_name == name:
+                                st.session_state[f"side_{other_name}"] = "P"
+                                st.session_state[f"amt_{other_name}"] = limit
+                            else:
+                                st.session_state[f"side_{other_name}"] = "-"
+                                st.session_state[f"amt_{other_name}"] = 0.0
+                        st.rerun()
             
             if side != "-" and amt > 0:
                 current_bets[name] = {'side': side, 'amount': amt}
 
     st.markdown("---")
 
+    # VERIFY LOGIC
     if st.button("VERIFY BETS", type="secondary", use_container_width=True):
         total_wager = sum(b['amount'] for b in current_bets.values())
         limit = st.session_state.bank_limit
         
         if eng.game_mode == "Chemin de Fer" and total_wager > limit:
-            st.error(f"⚠️ Bets (${total_wager}) exceed Bank Limit (${limit})!")
-            st.warning("Please reduce bets manually based on Reverse Seating Order.")
+            st.session_state.verify_state = "failed"
         else:
-            st.success("✅ Bets Valid!")
-            st.session_state.verified = True
+            st.session_state.verify_state = "passed"
+
+    # Display Verify Result
+    if st.session_state.verify_state == "passed":
+        st.success("✅ Bets Valid!")
+    
+    elif st.session_state.verify_state == "failed":
+        limit = st.session_state.bank_limit
+        total_wager = sum(b['amount'] for b in current_bets.values())
+        # FIX: Escape dollar signs for Streamlit Markdown
+        st.error(f"⚠️ Bets (\${total_wager:.0f}) exceed Bank Limit (\${limit:.0f})!")
+        
+        if st.button("Fix Automatically"):
+            corrected_bets = eng.calculate_auto_fix(current_bets, limit)
+            # Update session state widgets
+            for name, data in corrected_bets.items():
+                st.session_state[f"amt_{name}"] = data['amount']
+            
+            st.session_state.verify_state = "passed"
+            st.rerun()
 
     st.write("### Result")
     r_col1, r_col2, r_col3, r_col4 = st.columns([1, 1, 1, 1])
@@ -323,7 +365,7 @@ else:
         total_wager = sum(b['amount'] for b in current_bets.values())
         
         if eng.game_mode == "Chemin de Fer" and total_wager > limit:
-             st.error("Cannot process: Bets exceed limit! Verify first.")
+             st.error("Cannot process: Bets exceed limit! Check Verify.")
         else:
             results, b_gross, b_net = eng.calculate_round(current_bets, winner, trigger, 0)
             
@@ -340,13 +382,14 @@ else:
                 elif winner == 'B':
                     add_log(">> Banker Won. Shoe remains.")
                     if b_gross > 0:
-                         # 'inc_comm' exists in local scope if Chemmy is active
                          try:
                              add_amt = b_net if inc_comm else b_gross
                              st.session_state.bank_limit += add_amt
                              add_log(f"   [Bank Limit increased to ${st.session_state.bank_limit:.0f}]")
                          except: pass
             
+            # Reset
+            st.session_state.verify_state = "neutral"
             st.rerun()
 
     st.markdown("### Activity Log")
